@@ -15,11 +15,10 @@ contract ClaimToken is ERC721URIStorage, Ownable {
         baseURI = "http://localhost:3001/api/claim/";
     }
 
-    function mint(address to, string memory uri) external onlyOwner returns (uint256) {
+    function mint(address to) external onlyOwner returns (uint256) {
         uint256 tokenId = nextTokenId++;
         _mint(to, tokenId);
-        _setTokenURI(tokenId, uri); // optional if you're fully dynamic
-        emit ClaimTokenIssued(to, tokenId, uri);
+        emit ClaimTokenIssued(to, tokenId, tokenURI(tokenId));
         return tokenId;
     }
 

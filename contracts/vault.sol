@@ -26,7 +26,7 @@ contract Vault {
         balances[recipient] += msg.value;
         emit DepositMade(msg.sender, recipient, msg.value);
 
-        uint256 tokenId = claimToken.mint(recipient, tokenURI);
+        uint256 tokenId = claimToken.mint(recipient);
         emit ClaimTokenIssued(recipient, tokenId, tokenURI);
     }
 
