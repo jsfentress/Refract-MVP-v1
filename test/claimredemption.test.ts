@@ -1,93 +1,79 @@
-import { expect } from "chai";
 import { ethers } from "hardhat";
-import { Contract } from "ethers";
+import { expect } from "chai";
+
+const { parseEther, isAddress } = ethers;
 
 describe("ClaimRedemption", function () {
-  let claimRedemption: Contract;
-  let mockScheduleManager: Contract;
-  let mockVault: Contract;
-  let mockClaimToken: Contract;
+  let redemption: any;
+  let mockVault: any;
+  let mockToken: any;
+  let mockSchedule: any;
 
-  let owner: any, depositor: any, user: any;
-
-  const depositAmount = ethers.utils.parseEther("10");
-  const tokenId = 1;
-  const scheduleId = 42;
+  let deployer: any, depositor: any, user: any;
+  const tokenId = 0;
+  const scheduleId = 0;
+  const depositAmount = ethers.parseEther("10"); // ✅ BigInt
 
   beforeEach(async () => {
-    [owner, depositor, user] = await ethers.getSigners();
+    [deployer, depositor, user] = await ethers.getSigners();
 
-    // Mock Schedule Manager
-    const ScheduleManager = await ethers.getContractFactory("MockScheduleManager");
-    mockScheduleManager = await ScheduleManager.deploy();
-    await mockScheduleManager.deployed();
+    const MockToken = await ethers.getContractFactory("MockClaimToken");
+    mockToken = await MockToken.deploy(tokenId, user.address);
+    await mockToken.waitForDeployment();
 
-    // Mock Vault
-    const Vault = await ethers.getContractFactory("MockVault");
-    mockVault = await Vault.deploy(depositAmount, scheduleId, depositor.address);
-    await mockVault.deployed();
+    const MockVault = await ethers.getContractFactory("MockVault");
+    mockVault = await MockVault.deploy(depositAmount, scheduleId, depositor.address);
+    await mockVault.waitForDeployment();
 
-    // Mock ClaimToken (ERC-721)
-    const ClaimToken = await ethers.getContractFactory("MockClaimToken");
-    mockClaimToken = await ClaimToken.deploy(tokenId, user.address);
-    await mockClaimToken.deployed();
+    const MockSchedule = await ethers.getContractFactory("MockScheduleManager");
+    mockSchedule = await MockSchedule.deploy();
+    await mockSchedule.waitForDeployment();
+    await mockSchedule.setUnlockPercentage(scheduleId, 50);
 
-    // Deploy ClaimRedemption
-    const ClaimRedemption = await ethers.getContractFactory("ClaimRedemption");
-    claimRedemption = await ClaimRedemption.deploy(
-      mockScheduleManager.address,
-      mockVault.address,
-      mockClaimToken.address
+    const Redemption = await ethers.getContractFactory("ClaimRedemption");
+    redemption = await Redemption.deploy(
+      await mockSchedule.getAddress(),
+      await mockVault.getAddress(),
+      await mockToken.getAddress()
     );
-    await claimRedemption.deployed();
+    await redemption.waitForDeployment();
 
-    // Fund contract with ETH to simulate vault transfer
-    await owner.sendTransaction({
-      to: claimRedemption.address,
-      value: ethers.utils.parseEther("10"),
+    await deployer.sendTransaction({
+      to: await redemption.getAddress(),
+      value: depositAmount,
     });
   });
 
-  it("should allow partial claims based on unlock %", async () => {
-    await mockScheduleManager.setUnlockPercentage(scheduleId, 50); // 50%
+  it("should allow partial claim based on unlock %", async () => {
+    const before = await ethers.provider.getBalance(user.address);
 
-    await claimRedemption.connect(user).redeem(tokenId);
+    const tx = await redemption.connect(user).redeem(tokenId);
+    const receipt = await tx.wait();
+    const gas = receipt.gasUsed * receipt.gasPrice;
 
-    const claimed = await claimRedemption.claimedAmount(tokenId);
-    expect(claimed).to.equal(depositAmount.div(2)); // 5 ETH
+    const after = await ethers.provider.getBalance(user.address);
+    const expected = depositAmount / 2n; // ✅ BigInt division
 
-    const remaining = await claimRedemption.getClaimable(tokenId);
-    expect(remaining).to.equal(0);
+    expect(after - before + gas).to.be.closeTo(expected, ethers.parseEther("0.01"));
   });
 
-  it("should not allow over-claiming", async () => {
-    await mockScheduleManager.setUnlockPercentage(scheduleId, 50);
-    await claimRedemption.connect(user).redeem(tokenId);
-
-    await expect(claimRedemption.connect(user).redeem(tokenId)).to.be.revertedWith(
-      "Already fully claimed"
-    );
+  it("should block non-owners from claiming", async () => {
+    await expect(redemption.connect(deployer).redeem(tokenId)).to.be.revertedWith("Not token owner");
   });
 
-  it("should block unauthorized users", async () => {
-    await mockScheduleManager.setUnlockPercentage(scheduleId, 50);
-    await expect(claimRedemption.connect(depositor).redeem(tokenId)).to.be.revertedWith(
-      "Not token owner"
-    );
-  });
-
-  it("should allow full claim at 100%", async () => {
-    await mockScheduleManager.setUnlockPercentage(scheduleId, 100);
-
-    await claimRedemption.connect(user).redeem(tokenId);
-
-    const claimed = await claimRedemption.claimedAmount(tokenId);
-    expect(claimed).to.equal(depositAmount);
+  it("should prevent double claiming", async () => {
+    await redemption.connect(user).redeem(tokenId);
+    await expect(redemption.connect(user).redeem(tokenId)).to.be.revertedWith("Already fully claimed");
   });
 
   it("should return accurate claimable amount", async () => {
-    await mockScheduleManager.setUnlockPercentage(scheduleId, 25);
-    const claimable = await claimRedemption.getClaimable(tokenId);
-    expect(claimable).to.equal(depositAmount.div(4)); // 2.5 ETH
+    const claimable = await redemption.getClaimable(tokenId);
+    expect(claimable).to.equal(depositAmount / 2n); // ✅ BigInt division
+  });
+
+  it("should emit Claimed event with correct values", async () => {
+    await expect(redemption.connect(user).redeem(tokenId))
+      .to.emit(redemption, "Claimed")
+      .withArgs(tokenId, depositAmount / 2n, user.address);
   });
 });

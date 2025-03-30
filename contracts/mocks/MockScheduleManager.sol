@@ -8,7 +8,7 @@ contract MockScheduleManager {
         unlockPercentages[scheduleId] = percentage;
     }
 
-    function getUnlockedPercent(uint256 scheduleId, uint256 /* timestamp */) external view returns (uint256) {
+    function getUnlockPercentage(uint256 scheduleId, uint256 /* timestamp */) external view returns (uint256) {
         return unlockPercentages[scheduleId];
     }
 }
