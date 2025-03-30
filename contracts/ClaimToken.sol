@@ -11,8 +11,9 @@ contract ClaimToken is ERC721URIStorage, Ownable {
 
     event ClaimTokenIssued(address indexed to, uint256 indexed tokenId, string tokenURI);
 
-    constructor(address initialOwner) ERC721("Refract Claim Token", "RCT") Ownable(initialOwner) {
+    constructor(address vaultAddress) ERC721("Refract Claim Token", "RCT") {
         baseURI = "http://localhost:3001/api/claim/";
+        _transferOwnership(vaultAddress); // Only Vault can call `mint`
     }
 
     function mint(address to) external onlyOwner returns (uint256) {

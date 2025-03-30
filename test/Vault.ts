@@ -1,45 +1,70 @@
 import { ethers } from "hardhat";
 import { expect } from "chai";
 import { parseEther } from "ethers";
-const { ZeroAddress } = ethers;
 
 describe("Vault", function () {
-  it("should accept ETH and track balance", async function () {
-    const [owner, recipient] = await ethers.getSigners();
+  let vault: any;
+  let mockClaimToken: any;
+  let mockScheduleManager: any;
+  let deployer: any, recipient: any;
+
+  const depositAmount = parseEther("1.0");
+  const tokenId = 0;
+
+  beforeEach(async () => {
+    [deployer, recipient] = await ethers.getSigners();
+
+    const ClaimToken = await ethers.getContractFactory("MockClaimToken");
+    mockClaimToken = await ClaimToken.deploy(tokenId, recipient.address);
+    await mockClaimToken.waitForDeployment();
+
+    const ScheduleManager = await ethers.getContractFactory("MockScheduleManager");
+    mockScheduleManager = await ScheduleManager.deploy();
+    await mockScheduleManager.waitForDeployment();
 
     const Vault = await ethers.getContractFactory("Vault");
-    const vault = await Vault.deploy();
-
-    const tx = await vault.deposit(recipient.address, {
-      value: parseEther("1.0"),
-    });
-
-    await expect(tx)
-      .to.emit(vault, "DepositMade")
-      .withArgs(owner.address, recipient.address, parseEther("1.0"));
-
-    const balance = await vault.balances(recipient.address);
-    expect(balance).to.equal(parseEther("1.0"));
+    vault = await Vault.deploy(
+      await mockClaimToken.getAddress(),
+      await mockScheduleManager.getAddress()
+    );
+    await vault.waitForDeployment();
   });
 
-  it("should revert with zero ETH", async function () {
-    const [_, recipient] = await ethers.getSigners();
-    const Vault = await ethers.getContractFactory("Vault");
-    const vault = await Vault.deploy();
+  it("should accept ETH and mint ClaimToken", async () => {
+    const tx = await vault.connect(deployer).deposit(recipient.address, "fake-uri", {
+      value: depositAmount,
+    });
+    await tx.wait();
 
+    const storedAmount = await vault.depositedAmount(tokenId);
+    const depositorAddr = await vault.depositor(tokenId);
+
+    expect(storedAmount).to.equal(depositAmount);
+    expect(depositorAddr).to.equal(deployer.address);
+  });
+
+  it("should revert on zero ETH", async () => {
     await expect(
-      vault.deposit(recipient.address, { value: 0 })
+      vault.connect(deployer).deposit(recipient.address, "uri", { value: 0 })
     ).to.be.revertedWith("No ETH sent");
   });
 
-  it("should revert with zero address", async function () {
-    const Vault = await ethers.getContractFactory("Vault");
-    const vault = await Vault.deploy();
-
+  it("should revert on zero address", async () => {
+    const ZeroAddress = ethers.ZeroAddress;
     await expect(
-      vault.deposit(ZeroAddress, {
-        value: parseEther("1.0"),
-      })
+      vault.connect(deployer).deposit(ZeroAddress, "uri", { value: depositAmount })
     ).to.be.revertedWith("Invalid recipient");
+  });
+
+  it("should return correct claim data for a token", async () => {
+    await vault.connect(deployer).deposit(recipient.address, "http://fake.uri", {
+      value: depositAmount,
+    });
+
+    const [amount, schedule, depositorAddr] = await vault.getClaimData(tokenId);
+
+    expect(amount).to.equal(depositAmount);
+    expect(schedule).to.equal(0);
+    expect(depositorAddr).to.equal(deployer.address);
   });
 });
