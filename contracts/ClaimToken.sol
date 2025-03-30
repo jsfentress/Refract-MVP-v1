@@ -3,19 +3,31 @@ pragma solidity ^0.8.19;
 
 import "@openzeppelin/contracts/token/ERC721/extensions/ERC721URIStorage.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
+import "@openzeppelin/contracts/utils/Strings.sol";
 
 contract ClaimToken is ERC721URIStorage, Ownable {
     uint256 public nextTokenId;
+    string public baseURI;
 
     event ClaimTokenIssued(address indexed to, uint256 indexed tokenId, string tokenURI);
 
-    constructor(address initialOwner) ERC721("Refract Claim Token", "RCT") Ownable(initialOwner) {}
+    constructor(address initialOwner) ERC721("Refract Claim Token", "RCT") Ownable(initialOwner) {
+        baseURI = "http://localhost:3001/api/claim/";
+    }
 
     function mint(address to, string memory uri) external onlyOwner returns (uint256) {
         uint256 tokenId = nextTokenId++;
         _mint(to, tokenId);
-        _setTokenURI(tokenId, uri);
+        _setTokenURI(tokenId, uri); // optional if you're fully dynamic
         emit ClaimTokenIssued(to, tokenId, uri);
         return tokenId;
+    }
+
+    function setBaseURI(string memory newURI) external onlyOwner {
+        baseURI = newURI;
+    }
+
+    function tokenURI(uint256 tokenId) public view override returns (string memory) {
+        return string(abi.encodePacked(baseURI, Strings.toString(tokenId)));
     }
 }
