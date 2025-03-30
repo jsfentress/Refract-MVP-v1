@@ -10,7 +10,7 @@ async function main() {
   console.log(`ClaimToken deployed at: ${await claimToken.getAddress()}`);
 
   const Vault = await ethers.getContractFactory("Vault");
-  const vault = await Vault.deploy([await claimToken.getAddress()]);
+  const vault = await Vault.deploy(await claimToken.getAddress());
   await vault.waitForDeployment();
   console.log(`Vault deployed at: ${await vault.getAddress()}`);
 }
